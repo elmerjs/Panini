@@ -292,6 +292,62 @@
             cursor: pointer;
         }
 
+        /* Pantalla de comunidad */
+        .community-container {
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .user-card {
+            background: white;
+            border-radius: 20px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .user-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .user-name {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #8a1538;
+        }
+
+        .user-city {
+            color: #666;
+            font-size: 0.85rem;
+            margin-top: 4px;
+        }
+
+        .user-stats {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+            font-size: 0.8rem;
+        }
+
+        .matching-panel {
+            background: #f8f9fa;
+            border-radius: 16px;
+            padding: 16px;
+            margin-top: 16px;
+        }
+
+        .match-item {
+            background: white;
+            border-radius: 12px;
+            padding: 8px 12px;
+            margin: 8px 0;
+            border-left: 4px solid #8a1538;
+        }
+
         .bottom-nav {
             position: fixed;
             bottom: 0;
@@ -380,9 +436,13 @@
         <i class="fas fa-book-open"></i>
         <span>Álbum</span>
     </div>
+    <div class="nav-item" data-tab="community">
+        <i class="fas fa-users"></i>
+        <span>Comunidad</span>
+    </div>
     <div class="nav-item" data-tab="trade">
         <i class="fas fa-exchange-alt"></i>
-        <span>Intercambiar</span>
+        <span>Mi Intercambio</span>
     </div>
     <div class="nav-item reset-btn" id="resetDataBtn">
         <i class="fas fa-trash-alt"></i>
@@ -452,7 +512,6 @@
         localStorage.setItem('panini_user_data', JSON.stringify(userAlbumData));
     }
 
-    // Guardar un cromo individual en Firebase
     async function saveStickerToFirebase(uid, sectionId, stickerId, status, count) {
         if (!window.db || !uid) return;
         try {
@@ -468,7 +527,6 @@
         }
     }
 
-    // Sincronizar TODO el álbum a Firebase
     async function syncAllToFirebase() {
         if (!currentUser || !currentUser.uid) {
             alert("⚠️ Inicia sesión primero para sincronizar");
@@ -493,11 +551,9 @@
         return true;
     }
 
-    // Cargar datos (localStorage o Firebase)
     async function loadUserData() {
         const fresh = initUserData();
         
-        // Si hay usuario logueado, intentar cargar desde Firebase
         if (currentUser && currentUser.uid) {
             try {
                 const albumRef = collection(window.db, `users/${currentUser.uid}/albumStatus`);
@@ -524,7 +580,6 @@
             }
         }
         
-        // Si no hay usuario o no hay datos en Firebase, cargar desde localStorage
         const saved = localStorage.getItem('panini_user_data');
         if (saved) {
             try {
@@ -709,6 +764,140 @@
     }
 
     // ============================================================
+    // COMUNIDAD Y MATCHING
+    // ============================================================
+    async function showCommunity() {
+        if (!currentUser) {
+            alert('⚠️ Inicia sesión para ver la comunidad');
+            return;
+        }
+        
+        const container = document.getElementById('albumContainer');
+        container.innerHTML = '<div class="community-container"><h3>👥 Coleccionistas activos</h3><div id="usersList">Cargando...</div></div>';
+        
+        try {
+            const myProfileRef = doc(db, `publicProfiles/${currentUser.uid}`);
+            await setDoc(myProfileRef, {
+                alias: currentUser.displayName || "Coleccionista",
+                city: localStorage.getItem('user_city') || "No especificada",
+                visible: true,
+                lastActive: serverTimestamp()
+            }, { merge: true });
+            
+            const profilesRef = collection(db, 'publicProfiles');
+            const snapshot = await getDocs(profilesRef);
+            
+            const usersList = document.getElementById('usersList');
+            usersList.innerHTML = '';
+            
+            snapshot.forEach(doc => {
+                if (doc.id !== currentUser.uid) {
+                    const data = doc.data();
+                    if (data.visible) {
+                        usersList.innerHTML += `
+                            <div class="user-card" data-uid="${doc.id}">
+                                <div class="user-name">${data.alias || 'Anónimo'}</div>
+                                <div class="user-city">📍 ${data.city || 'Ciudad no especificada'}</div>
+                                <div class="user-stats">
+                                    <span>🔄 Ver coincidencias</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+            });
+            
+            document.querySelectorAll('.user-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    showMatching(card.dataset.uid);
+                });
+            });
+            
+            if (usersList.innerHTML === '') {
+                usersList.innerHTML = '<p>No hay otros coleccionistas aún. Comparte la app!</p>';
+            }
+            
+        } catch(e) {
+            console.error('Error cargando comunidad:', e);
+            document.getElementById('usersList').innerHTML = '<p>Error cargando comunidad. Asegura las reglas de Firestore.</p>';
+        }
+    }
+
+    async function showMatching(otherUserId) {
+        if (!currentUser) return;
+        
+        const container = document.getElementById('albumContainer');
+        container.innerHTML = '<div class="community-container"><h3>🔄 Buscando coincidencias...</h3></div>';
+        
+        try {
+            const otherProfile = await getDoc(doc(db, `publicProfiles/${otherUserId}`));
+            const otherName = otherProfile.data()?.alias || 'Coleccionista';
+            
+            let myMissing = [];
+            let myRepeated = [];
+            
+            for (const section in userAlbumData) {
+                for (const stickerId in userAlbumData[section]) {
+                    const st = userAlbumData[section][stickerId];
+                    const fullId = `${section}_${stickerId}`;
+                    if (st.status === 0) myMissing.push(fullId);
+                    if (st.status >= 2) myRepeated.push(fullId);
+                }
+            }
+            
+            const otherAlbumRef = collection(db, `users/${otherUserId}/albumStatus`);
+            const otherSnapshot = await getDocs(otherAlbumRef);
+            
+            let otherMissing = [];
+            let otherRepeated = [];
+            
+            otherSnapshot.forEach(doc => {
+                const data = doc.data();
+                if (data.status === 0) otherMissing.push(data.stickerId);
+                if (data.status >= 2) otherRepeated.push(data.stickerId);
+            });
+            
+            const theyHaveIneed = otherRepeated.filter(id => myMissing.includes(id));
+            const iHaveTheyNeed = myRepeated.filter(id => otherMissing.includes(id));
+            
+            container.innerHTML = `
+                <div class="community-container">
+                    <button onclick="showCommunity()" style="background:#8a1538; color:white; border:none; padding:8px 16px; border-radius:40px; margin-bottom:16px;">
+                        ← Volver a comunidad
+                    </button>
+                    <h3>🤝 Coincidencias con ${otherName}</h3>
+                    
+                    <div class="matching-panel">
+                        <h4>📦 Ellos tienen repetidas y TÚ necesitas (${theyHaveIneed.length})</h4>
+                        ${theyHaveIneed.map(id => `<div class="match-item">✅ ${id}</div>`).join('') || '<p>No hay coincidencias en esta dirección</p>'}
+                    </div>
+                    
+                    <div class="matching-panel">
+                        <h4>🎁 TÚ tienes repetidas y ELLOS necesitan (${iHaveTheyNeed.length})</h4>
+                        ${iHaveTheyNeed.map(id => `<div class="match-item">🔄 ${id}</div>`).join('') || '<p>No hay coincidencias en esta dirección</p>'}
+                    </div>
+                    
+                    ${(theyHaveIneed.length > 0 || iHaveTheyNeed.length > 0) ? 
+                        `<div style="background:#e8f5e9; border-radius:16px; padding:16px; margin-top:16px; text-align:center;">
+                            <strong>🎉 Posible intercambio!</strong><br>
+                            Contacta al usuario para coordinar.
+                        </div>` : 
+                        `<div style="background:#fff3e0; border-radius:16px; padding:16px; margin-top:16px;">
+                            😕 No hay coincidencias aún. Sigue coleccionando!
+                        </div>`
+                    }
+                </div>
+            `;
+            
+            window.showCommunity = showCommunity;
+            
+        } catch(e) {
+            console.error('Error calculando coincidencias:', e);
+            container.innerHTML = '<div class="community-container"><p>Error: Necesitas reglas de Firestore actualizadas</p></div>';
+        }
+    }
+
+    // ============================================================
     // RESET Y NAVEGACIÓN
     // ============================================================
     function resetAllProgress() {
@@ -730,8 +919,15 @@
         navItems.forEach(item => {
             item.addEventListener('click', () => {
                 const tab = item.dataset.tab;
-                if (tab === 'trade') openTradeModal();
-                else if (tab === 'album') modal.style.display = 'none';
+                if (tab === 'trade') {
+                    openTradeModal();
+                } else if (tab === 'album') {
+                    modal.style.display = 'none';
+                    renderAlbum();
+                } else if (tab === 'community') {
+                    modal.style.display = 'none';
+                    showCommunity();
+                }
             });
         });
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
@@ -784,7 +980,6 @@
     // INICIALIZACIÓN
     // ============================================================
     async function initApp() {
-        // Configurar listeners de auth
         onAuthStateChanged(auth, async (user) => {
             currentUser = user;
             updateAuthUI(user);
@@ -793,12 +988,10 @@
             renderAlbum();
         });
         
-        // Configurar UI
         populateTeamSelect();
         setupStatusFilters();
         setupNavigation();
         
-        // Botones de auth
         document.getElementById('btnLogin').addEventListener('click', handleLogin);
         document.getElementById('btnLogout').addEventListener('click', handleLogout);
     }
