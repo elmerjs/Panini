@@ -304,6 +304,58 @@
                 font-size: 0.65rem;
             }
         }
+            /* Tarjeta de Soporte / Mantenimiento */
+        .support-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            padding: 16px;
+            margin-top: 20px;
+            text-align: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+        }
+
+        .support-card h4 {
+            color: #8a1538;
+            font-size: 1rem;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .support-card p {
+            font-size: 0.8rem;
+            color: #64748b;
+            line-height: 1.4;
+            margin-bottom: 12px;
+        }
+
+        .key-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #f1f5f9;
+            border: 1px dashed #cbd5e1;
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #1e293b;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .key-badge:active {
+            background: #e2e8f0;
+            transform: scale(0.98);
+        }
+
+        .key-badge i {
+            color: #0ea5e9; /* Color azul llamativo para la llave */
+        }
+        
     </style>
 </head>
 <body>
@@ -331,8 +383,17 @@
 <div id="tradeModal" class="modal">
     <h3><i class="fas fa-handshake"></i> Mis intercambios</h3>
     <textarea id="tradeText" readonly></textarea>
-    <button id="copyTradeBtn"><i class="fas fa-copy"></i> Copiar lista para WhatsApp</button>
+    <button id="copyTradeBtn" style="margin-bottom: 10px;"><i class="fas fa-copy"></i> Copiar lista para WhatsApp</button>
+    
+    <div class="support-card">
+        <h4><i class="fas fa-heart"></i> ¿Te ha sido útil la app?</h4>
+        <p>Ayuda a mantener los servidores activos compartiendo un aporte para el mantenimiento del proyecto.</p>
+        <div class="key-badge" id="copyKeyBtn">
+            <i class="fas fa-key"></i> A la llave: <span>@BPEJS278</span>
+        </div>
+    </div>
 </div>
+
 
 <nav class="bottom-nav">
     <div class="nav-item active" data-tab="album">
@@ -574,7 +635,7 @@
         }
     }
 
-    function setupNavigation() {
+        function setupNavigation() {
         const navItems = document.querySelectorAll('.nav-item');
         const modal = document.getElementById('tradeModal');
         navItems.forEach(item => {
@@ -587,7 +648,15 @@
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
         document.getElementById('copyTradeBtn').addEventListener('click', copyTradeText);
         document.getElementById('resetDataBtn').addEventListener('click', resetAllProgress);
+
+        // --- AGREGA ESTO PARA COPIAR TU LLAVE ---
+        document.getElementById('copyKeyBtn').addEventListener('click', () => {
+            navigator.clipboard.writeText('@BPEJS278').then(() => {
+                alert('🔑 Llave copiada al portapapeles. ¡Gracias por tu apoyo!');
+            });
+        });
     }
+
 
     // --------------------------------------------------------------
     // 5. INICIO
