@@ -574,7 +574,9 @@
         <button id="syncCloudBtn" class="sync-btn"><i class="fas fa-cloud-upload-alt"></i> Sincronizar</button>
     </div>
 </header>
-
+<button id="debugLocalBtn" class="sync-btn" style="background:#3b82f6; color:white; margin-left:8px;">
+    <i class="fas fa-database"></i> Debug
+</button>
 <div class="filters-bar">
     <select id="teamFilter" class="team-select"></select>
     <div class="status-buttons">
@@ -1538,7 +1540,34 @@ if ('serviceWorker' in navigator) {
         }
     });
 }
+    function debugLocalStorage() {
+    const saved = localStorage.getItem('panini_user_data');
+    console.log("=== DIAGNÓSTICO localStorage ===");
+    console.log("¿Hay datos guardados?", saved ? "SÍ" : "NO");
     
+    if (saved) {
+        const parsed = JSON.parse(saved);
+        let count = 0;
+        for (const section in parsed) {
+            for (const sticker in parsed[section]) {
+                if (parsed[section][sticker].status > 0) count++;
+            }
+        }
+        console.log("Stickers marcados en localStorage:", count);
+    }
+    
+    let memoryCount = 0;
+    for (const section in userAlbumData) {
+        for (const sticker in userAlbumData[section]) {
+            if (userAlbumData[section][sticker].status > 0) memoryCount++;
+        }
+    }
+    console.log("Stickers marcados en memoria:", memoryCount);
+    
+    alert(`localStorage: ${saved ? "Con datos" : "VACÍO"}\nMemoria: ${memoryCount} stickers`);
+}
+
+document.getElementById('debugLocalBtn')?.addEventListener('click', debugLocalStorage);
     
 </script>
 </body>
