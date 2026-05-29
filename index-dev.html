@@ -471,91 +471,91 @@
             }
         }
         
-    /* Modal de bienvenida */
-.welcome-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0,0,0,0.8);
-    z-index: 200;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-}
+        /* Modal de bienvenida */
+        .welcome-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
 
-.welcome-content {
-    background: white;
-    border-radius: 32px;
-    padding: 24px;
-    max-width: 400px;
-    text-align: center;
-    animation: slideUp 0.3s ease;
-}
+        .welcome-content {
+            background: white;
+            border-radius: 32px;
+            padding: 24px;
+            max-width: 400px;
+            text-align: center;
+            animation: slideUp 0.3s ease;
+        }
 
-@keyframes slideUp {
-    from { transform: translateY(50px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-}
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
 
-.welcome-content h2 {
-    color: #8a1538;
-    margin-bottom: 16px;
-}
+        .welcome-content h2 {
+            color: #8a1538;
+            margin-bottom: 16px;
+        }
 
-.welcome-content p {
-    color: #666;
-    margin-bottom: 20px;
-    line-height: 1.5;
-}
+        .welcome-content p {
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
 
-.welcome-content .benefits {
-    background: #f0f2f5;
-    border-radius: 16px;
-    padding: 16px;
-    margin: 16px 0;
-    text-align: left;
-}
+        .welcome-content .benefits {
+            background: #f0f2f5;
+            border-radius: 16px;
+            padding: 16px;
+            margin: 16px 0;
+            text-align: left;
+        }
 
-.welcome-content .benefits li {
-    margin: 8px 0;
-    list-style: none;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
+        .welcome-content .benefits li {
+            margin: 8px 0;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
 
-.welcome-content .benefits li i {
-    color: #4caf50;
-    width: 24px;
-}
+        .welcome-content .benefits li i {
+            color: #4caf50;
+            width: 24px;
+        }
 
-.welcome-buttons {
-    display: flex;
-    gap: 12px;
-    margin-top: 20px;
-}
+        .welcome-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
 
-.welcome-buttons button {
-    flex: 1;
-    padding: 12px;
-    border-radius: 40px;
-    border: none;
-    font-weight: bold;
-    cursor: pointer;
-}
+        .welcome-buttons button {
+            flex: 1;
+            padding: 12px;
+            border-radius: 40px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+        }
 
-.btn-primary {
-    background: #8a1538;
-    color: white;
-}
+        .btn-primary {
+            background: #8a1538;
+            color: white;
+        }
 
-.btn-secondary {
-    background: #e9ecef;
-    color: #333;
-}
+        .btn-secondary {
+            background: #e9ecef;
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -622,7 +622,7 @@
     // ============================================================
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
     import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, collection, getDocs, serverTimestamp, updateDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyDI6B0Nfy9Xra6hbpLjbPHQgMBMNwhujjM",
@@ -649,6 +649,11 @@
     let currentStatusFilter = "ALL";
     let currentUser = null;
     let userProfile = { city: "", department: "", whatsapp: "" };
+    
+    // OPTIMIZACIÓN: Variables para sincronización inteligente
+    let cambiosLocales = [];           // Cola de cambios pendientes
+    let syncTimeout = null;            // Timeout para auto-sync
+    let usuarioNuevo = false;          // Para saber si es primera vez
 
     // ============================================================
     // FUNCIONES DE INICIALIZACIÓN DE DATOS
@@ -663,7 +668,7 @@
         toast.innerHTML = message;
         document.body.appendChild(toast);
         
-        setTimeout(() => toast.remove(), 2000);
+        setTimeout(() => toast.remove(), 2500);
     }
 
     function initUserData() {
@@ -706,38 +711,83 @@
         }
     }
 
-    async function syncAllToFirebase() {
+    // AUTO-SINCRONIZACIÓN: Solo envía los cambios pendientes
+    async function autoSync() {
+        if (!currentUser || !currentUser.uid) return;
+        if (cambiosLocales.length === 0) return;
+        
+        const cambios = [...cambiosLocales];
+        cambiosLocales = [];
+        
+        let exito = 0;
+        for (const cambio of cambios) {
+            try {
+                await saveStickerToFirebase(
+                    currentUser.uid, 
+                    cambio.sectionId, 
+                    cambio.stickerId, 
+                    cambio.status, 
+                    cambio.count
+                );
+                exito++;
+            } catch(e) {
+                console.warn("Error en auto-sync:", e);
+                cambiosLocales.unshift(cambio);
+            }
+        }
+        
+        if (exito > 0) {
+            showToast(`🔄 ${exito} cromo${exito !== 1 ? 's' : ''} sincronizado${exito !== 1 ? 's' : ''}`);
+        }
+    }
+
+    // Sincronización manual optimizada (solo stickers con progreso)
+    async function syncAllToFirebase(mostrarFeedback = true) {
         if (!currentUser || !currentUser.uid) {
-            showToast("⚠️ Inicia sesión primero", true);
+            if (mostrarFeedback) showToast("⚠️ Inicia sesión primero", true);
             return false;
         }
         
         const syncBtn = document.getElementById('syncCloudBtn');
         const originalText = syncBtn.innerHTML;
-        syncBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Sincronizando...';
-        syncBtn.disabled = true;
+        if (mostrarFeedback) {
+            syncBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Sincronizando...';
+            syncBtn.disabled = true;
+        }
+        
+        // SOLO subir stickers que tienen progreso (status > 0)
+        const stickersConProgreso = [];
+        for (const section in userAlbumData) {
+            for (const stickerId in userAlbumData[section]) {
+                const st = userAlbumData[section][stickerId];
+                if (st.status > 0) {
+                    stickersConProgreso.push({
+                        section, stickerId, status: st.status, count: st.count
+                    });
+                }
+            }
+        }
         
         let count = 0;
         try {
-            for (const section in userAlbumData) {
-                for (const stickerId in userAlbumData[section]) {
-                    const st = userAlbumData[section][stickerId];
-                    const stickerRef = doc(window.db, `users/${currentUser.uid}/albumStatus/${section}_${stickerId}`);
-                    await setDoc(stickerRef, {
-                        stickerId: `${section}_${stickerId}`,
-                        status: st.status,
-                        count: st.count,
-                        updatedAt: serverTimestamp()
-                    }, { merge: true });
-                    count++;
-                }
+            for (const sticker of stickersConProgreso) {
+                const stickerRef = doc(window.db, `users/${currentUser.uid}/albumStatus/${sticker.section}_${sticker.stickerId}`);
+                await setDoc(stickerRef, {
+                    stickerId: `${sticker.section}_${sticker.stickerId}`,
+                    status: sticker.status,
+                    count: sticker.count,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+                count++;
             }
-            showToast(`✅ ${count} cromos sincronizados correctamente`);
+            if (mostrarFeedback) showToast(`✅ ${count} cromos sincronizados`);
         } catch(e) {
-            showToast(`❌ Error: ${e.message}`, true);
+            if (mostrarFeedback) showToast(`❌ Error: ${e.message}`, true);
         } finally {
-            syncBtn.innerHTML = originalText;
-            syncBtn.disabled = false;
+            if (mostrarFeedback) {
+                syncBtn.innerHTML = originalText;
+                syncBtn.disabled = false;
+            }
         }
         return true;
     }
@@ -763,9 +813,13 @@
                         }
                     });
                     userAlbumData = fresh;
-                    saveUserData();
-                    return;
+                    usuarioNuevo = false;
+                } else {
+                    userAlbumData = fresh;
+                    usuarioNuevo = true;
                 }
+                saveUserData();
+                return;
             } catch(e) {
                 console.warn("Error cargando desde Firebase:", e);
             }
@@ -775,6 +829,7 @@
         if (saved) {
             try {
                 userAlbumData = JSON.parse(saved);
+                usuarioNuevo = false;
                 for (let section in fresh) {
                     if (!userAlbumData[section]) userAlbumData[section] = fresh[section];
                     else {
@@ -788,9 +843,11 @@
                 saveUserData();
             } catch(e) {
                 userAlbumData = fresh;
+                usuarioNuevo = true;
             }
         } else {
             userAlbumData = fresh;
+            usuarioNuevo = true;
             saveUserData();
         }
     }
@@ -802,28 +859,21 @@
             const profileSnap = await getDoc(profileRef);
             if (profileSnap.exists()) {
                 userProfile = profileSnap.data();
-                document.getElementById('userCity')?.setAttribute('value', userProfile.city || '');
-                document.getElementById('userDepartment')?.setAttribute('value', userProfile.department || '');
-                document.getElementById('userWhatsapp')?.setAttribute('value', userProfile.whatsapp || '');
             }
         } catch(e) {
             console.warn("Error cargando perfil:", e);
         }
     }
-        // Mostrar modal de bienvenida si es necesario
+
     async function checkShowWelcomeModal() {
         if (!currentUser) return;
         
-        // Verificar si ya se mostró antes
         const hasSeenWelcome = localStorage.getItem(`welcome_seen_${currentUser.uid}`);
-        
-        // Si el perfil está incompleto (sin ciudad o sin whatsapp) Y no ha visto el modal
         const hasIncompleteProfile = !userProfile.city || !userProfile.whatsapp;
         
         if (hasIncompleteProfile && !hasSeenWelcome) {
             showWelcomeModal();
         } else if (hasIncompleteProfile && hasSeenWelcome === 'later') {
-            // Si dijo "después" pero sigue incompleto, mostrar de nuevo después de 3 veces que entre
             const laterCount = parseInt(localStorage.getItem(`welcome_later_${currentUser.uid}`) || '0');
             if (laterCount >= 2) {
                 showWelcomeModal();
@@ -835,7 +885,6 @@
     }
     
     function showWelcomeModal() {
-        // Remover modal existente si hay
         const existingModal = document.querySelector('.welcome-modal');
         if (existingModal) existingModal.remove();
         
@@ -876,7 +925,6 @@
         });
     }
     
-    // Mostrar banner recordatorio en la parte superior (opcional, no molesto)
     function showProfileReminderBanner() {
         const hasIncompleteProfile = (!userProfile.city || !userProfile.whatsapp);
         const bannerDismissed = localStorage.getItem(`banner_dismissed_${currentUser?.uid}`);
@@ -921,6 +969,7 @@
             });
         }
     }
+
     async function saveUserProfile() {
         const city = document.getElementById('userCity')?.value || '';
         const department = document.getElementById('userDepartment')?.value || '';
@@ -965,6 +1014,7 @@
         document.getElementById('repeatCount').innerText = repeated;
     }
 
+    // CYCLE STATUS OPTIMIZADO: Guarda en cola, no envía inmediatamente
     function cycleStatus(sectionId, stickerId) {
         const sticker = userAlbumData[sectionId][stickerId];
         if (!sticker) return;
@@ -978,9 +1028,17 @@
         
         saveUserData();
         
-        if (currentUser && currentUser.uid) {
-            saveStickerToFirebase(currentUser.uid, sectionId, stickerId, sticker.status, sticker.count);
-        }
+        // Guardar en cola de cambios pendientes
+        cambiosLocales.push({
+            sectionId: sectionId,
+            stickerId: stickerId,
+            status: sticker.status,
+            count: sticker.count
+        });
+        
+        // Programar sincronización automática (2 segundos después del último cambio)
+        if (syncTimeout) clearTimeout(syncTimeout);
+        syncTimeout = setTimeout(() => autoSync(), 2000);
         
         updateStats();
         renderAlbum();
@@ -1310,6 +1368,13 @@
         }
     }
 
+    // Guardar cambios pendientes antes de cerrar la página
+    window.addEventListener('beforeunload', async () => {
+        if (cambiosLocales.length > 0 && currentUser) {
+            await autoSync();
+        }
+    });
+
     // ============================================================
     // RESET Y NAVEGACIÓN
     // ============================================================
@@ -1350,7 +1415,7 @@
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
         document.getElementById('copyTradeBtn').addEventListener('click', copyTradeText);
         document.getElementById('resetDataBtn').addEventListener('click', resetAllProgress);
-        document.getElementById('syncCloudBtn').addEventListener('click', syncAllToFirebase);
+        document.getElementById('syncCloudBtn').addEventListener('click', () => syncAllToFirebase(true));
     }
 
     // ============================================================
@@ -1398,16 +1463,22 @@
     // INICIALIZACIÓN
     // ============================================================
     async function initApp() {
-         onAuthStateChanged(auth, async (user) => {
+        onAuthStateChanged(auth, async (user) => {
             currentUser = user;
             updateAuthUI(user);
             await loadUserData();
             if (user) {
                 await loadUserProfile();
-                // Mostrar modal de bienvenida si es necesario
                 await checkShowWelcomeModal();
-                // Mostrar banner recordatorio
                 showProfileReminderBanner();
+                
+                // Si es usuario NUEVO, sincronizar automáticamente
+                if (usuarioNuevo) {
+                    setTimeout(() => {
+                        syncAllToFirebase(false);
+                        showToast("🌤️ Tu álbum se está guardando en la nube...");
+                    }, 1000);
+                }
             }
             updateStats();
             renderAlbum();
