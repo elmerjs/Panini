@@ -1,4 +1,4 @@
-const defaultAlbumData = [
+window.defaultAlbumData = [
   {
     id: "FIFA",
     name: "Especiales (FIFA)",
