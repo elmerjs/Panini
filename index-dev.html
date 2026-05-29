@@ -1265,7 +1265,7 @@
         }
     }
 
-    async function showMatching(otherUserId) {
+        async function showMatching(otherUserId) {
         if (!currentUser) return;
         
         const container = document.getElementById('albumContainer');
@@ -1281,15 +1281,18 @@
             if (otherData?.city) otherLocation.push(otherData.city);
             const otherLocationText = otherLocation.length ? `📍 ${otherLocation.join(', ')}` : '📍 Ubicación no especificada';
             
+            // CORREGIDO: Usar el mismo formato para todos los IDs
             let myMissing = [];
             let myRepeated = [];
             
             for (const section in userAlbumData) {
                 for (const stickerId in userAlbumData[section]) {
                     const st = userAlbumData[section][stickerId];
-                    const fullId = `${section}_${stickerId}`;
-                    if (st.status === 0) myMissing.push(fullId);
-                    if (st.status >= 2) myRepeated.push(fullId);
+                    // Usar stickerId SOLO (sin prefijo de sección)
+                    // Porque en Firebase se guarda como `${section}_${stickerId}`
+                    const firebaseId = `${section}_${stickerId}`;
+                    if (st.status === 0) myMissing.push(firebaseId);
+                    if (st.status >= 2) myRepeated.push(firebaseId);
                 }
             }
             
@@ -1301,12 +1304,36 @@
             
             otherSnapshot.forEach(doc => {
                 const data = doc.data();
-                if (data.status === 0) otherMissing.push(data.stickerId);
-                if (data.status >= 2) otherRepeated.push(data.stickerId);
+                const stickerId = data.stickerId; // Esto ya viene como "MEX_MEX8"
+                if (data.status === 0) otherMissing.push(stickerId);
+                if (data.status >= 2) otherRepeated.push(stickerId);
             });
+            
+            // DEBUG: Mostrar en consola para verificar
+            console.log("Mis repetidas:", myRepeated);
+            console.log("Faltantes del otro:", otherMissing);
+            console.log("Coincidencia (yo doy):", myRepeated.filter(id => otherMissing.includes(id)));
+            console.log("Repetidas del otro:", otherRepeated);
+            console.log("Mis faltantes:", myMissing);
+            console.log("Coincidencia (ellos dan):", otherRepeated.filter(id => myMissing.includes(id)));
             
             const theyHaveIneed = otherRepeated.filter(id => myMissing.includes(id));
             const iHaveTheyNeed = myRepeated.filter(id => otherMissing.includes(id));
+            
+            // Función para extraer nombre legible del sticker
+            function getStickerDisplayName(fullId) {
+                // fullId viene como "MEX_MEX8" o "FIFA_FW14"
+                const parts = fullId.split('_');
+                const code = parts[parts.length - 1]; // Última parte es el código real
+                
+                // Buscar el nombre en userAlbumData
+                for (const section in userAlbumData) {
+                    if (userAlbumData[section][code]) {
+                        return `${code} (${userAlbumData[section][code].name})`;
+                    }
+                }
+                return fullId;
+            }
             
             let contactHtml = '';
             if ((theyHaveIneed.length > 0 || iHaveTheyNeed.length > 0) && otherData?.whatsapp) {
@@ -1348,12 +1375,12 @@
                     
                     <div class="matching-panel">
                         <h4>📦 Ellos tienen repetidas y TÚ necesitas (${theyHaveIneed.length})</h4>
-                        ${theyHaveIneed.map(id => `<div class="match-item">✅ ${id}</div>`).join('') || '<p>No hay coincidencias en esta dirección</p>'}
+                        ${theyHaveIneed.map(id => `<div class="match-item">✅ ${getStickerDisplayName(id)}</div>`).join('') || '<p>No hay coincidencias en esta dirección</p>'}
                     </div>
                     
                     <div class="matching-panel">
                         <h4>🎁 TÚ tienes repetidas y ELLOS necesitan (${iHaveTheyNeed.length})</h4>
-                        ${iHaveTheyNeed.map(id => `<div class="match-item">🔄 ${id}</div>`).join('') || '<p>No hay coincidencias en esta dirección</p>'}
+                        ${iHaveTheyNeed.map(id => `<div class="match-item">🔄 ${getStickerDisplayName(id)}</div>`).join('') || '<p>No hay coincidencias en esta dirección</p>'}
                     </div>
                     
                     ${contactHtml}
