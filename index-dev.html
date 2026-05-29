@@ -69,9 +69,9 @@
             transition: 0.2s;
         }
 
-        .sync-btn:hover {
-            background: #ffc107;
-            transform: scale(1.02);
+        .sync-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
         .filters-bar {
@@ -292,7 +292,6 @@
             cursor: pointer;
         }
 
-        /* Pantalla de comunidad */
         .community-container {
             padding: 20px;
             max-width: 800px;
@@ -326,6 +325,22 @@
             margin-top: 4px;
         }
 
+        .user-contact {
+            background: #e8f5e9;
+            border-radius: 12px;
+            padding: 8px 12px;
+            margin-top: 10px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .user-contact i {
+            color: #25d366;
+        }
+
         .user-stats {
             display: flex;
             gap: 16px;
@@ -346,6 +361,66 @@
             padding: 8px 12px;
             margin: 8px 0;
             border-left: 4px solid #8a1538;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+
+        .edit-profile-btn {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 40px;
+            cursor: pointer;
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        .profile-form {
+            background: white;
+            border-radius: 16px;
+            padding: 16px;
+            margin-top: 16px;
+        }
+
+        .profile-form input, .profile-form select {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 12px;
+            border: 1px solid #ccc;
+        }
+
+        .profile-form button {
+            background: #8a1538;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 40px;
+            width: 100%;
+            margin-top: 8px;
+            cursor: pointer;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 100px;
+            left: 20px;
+            right: 20px;
+            background: #333;
+            color: white;
+            padding: 12px;
+            border-radius: 12px;
+            text-align: center;
+            z-index: 200;
+            animation: fadeInOut 2s ease;
+        }
+
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(20px); }
+            15% { opacity: 1; transform: translateY(0); }
+            85% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(20px); }
         }
 
         .bottom-nav {
@@ -436,6 +511,10 @@
         <i class="fas fa-book-open"></i>
         <span>Álbum</span>
     </div>
+    <div class="nav-item" data-tab="profile">
+        <i class="fas fa-user-edit"></i>
+        <span>Mi Perfil</span>
+    </div>
     <div class="nav-item" data-tab="community">
         <i class="fas fa-users"></i>
         <span>Comunidad</span>
@@ -457,7 +536,7 @@
     // ============================================================
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
     import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, collection, getDocs, serverTimestamp, updateDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyDI6B0Nfy9Xra6hbpLjbPHQgMBMNwhujjM",
@@ -483,10 +562,24 @@
     let currentTeamFilter = "ALL";
     let currentStatusFilter = "ALL";
     let currentUser = null;
+    let userProfile = { city: "", department: "", whatsapp: "" };
 
     // ============================================================
     // FUNCIONES DE INICIALIZACIÓN DE DATOS
     // ============================================================
+    function showToast(message, isError = false) {
+        const existingToast = document.querySelector('.toast');
+        if (existingToast) existingToast.remove();
+        
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.style.background = isError ? '#dc2626' : '#22c55e';
+        toast.innerHTML = message;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => toast.remove(), 2000);
+    }
+
     function initUserData() {
         if (!window.defaultAlbumData || !Array.isArray(window.defaultAlbumData)) {
             console.error("defaultAlbumData no está definido");
@@ -529,25 +622,37 @@
 
     async function syncAllToFirebase() {
         if (!currentUser || !currentUser.uid) {
-            alert("⚠️ Inicia sesión primero para sincronizar");
+            showToast("⚠️ Inicia sesión primero", true);
             return false;
         }
         
+        const syncBtn = document.getElementById('syncCloudBtn');
+        const originalText = syncBtn.innerHTML;
+        syncBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Sincronizando...';
+        syncBtn.disabled = true;
+        
         let count = 0;
-        for (const section in userAlbumData) {
-            for (const stickerId in userAlbumData[section]) {
-                const st = userAlbumData[section][stickerId];
-                const stickerRef = doc(window.db, `users/${currentUser.uid}/albumStatus/${section}_${stickerId}`);
-                await setDoc(stickerRef, {
-                    stickerId: `${section}_${stickerId}`,
-                    status: st.status,
-                    count: st.count,
-                    updatedAt: serverTimestamp()
-                }, { merge: true });
-                count++;
+        try {
+            for (const section in userAlbumData) {
+                for (const stickerId in userAlbumData[section]) {
+                    const st = userAlbumData[section][stickerId];
+                    const stickerRef = doc(window.db, `users/${currentUser.uid}/albumStatus/${section}_${stickerId}`);
+                    await setDoc(stickerRef, {
+                        stickerId: `${section}_${stickerId}`,
+                        status: st.status,
+                        count: st.count,
+                        updatedAt: serverTimestamp()
+                    }, { merge: true });
+                    count++;
+                }
             }
+            showToast(`✅ ${count} cromos sincronizados correctamente`);
+        } catch(e) {
+            showToast(`❌ Error: ${e.message}`, true);
+        } finally {
+            syncBtn.innerHTML = originalText;
+            syncBtn.disabled = false;
         }
-        alert(`✅ ${count} cromos sincronizados con la nube`);
         return true;
     }
 
@@ -601,6 +706,45 @@
         } else {
             userAlbumData = fresh;
             saveUserData();
+        }
+    }
+
+    async function loadUserProfile() {
+        if (!currentUser) return;
+        try {
+            const profileRef = doc(db, `publicProfiles/${currentUser.uid}`);
+            const profileSnap = await getDoc(profileRef);
+            if (profileSnap.exists()) {
+                userProfile = profileSnap.data();
+                document.getElementById('userCity')?.setAttribute('value', userProfile.city || '');
+                document.getElementById('userDepartment')?.setAttribute('value', userProfile.department || '');
+                document.getElementById('userWhatsapp')?.setAttribute('value', userProfile.whatsapp || '');
+            }
+        } catch(e) {
+            console.warn("Error cargando perfil:", e);
+        }
+    }
+
+    async function saveUserProfile() {
+        const city = document.getElementById('userCity')?.value || '';
+        const department = document.getElementById('userDepartment')?.value || '';
+        const whatsapp = document.getElementById('userWhatsapp')?.value || '';
+        
+        try {
+            const profileRef = doc(db, `publicProfiles/${currentUser.uid}`);
+            await setDoc(profileRef, {
+                alias: currentUser.displayName || "Coleccionista",
+                city: city,
+                department: department,
+                whatsapp: whatsapp,
+                visible: true,
+                lastActive: serverTimestamp()
+            }, { merge: true });
+            userProfile = { city, department, whatsapp };
+            showToast("✅ Perfil guardado correctamente");
+            showProfileEditor();
+        } catch(e) {
+            showToast("❌ Error guardando perfil", true);
         }
     }
 
@@ -730,6 +874,35 @@
     }
 
     // ============================================================
+    // PERFIL
+    // ============================================================
+    function showProfileEditor() {
+        const container = document.getElementById('albumContainer');
+        container.innerHTML = `
+            <div class="community-container">
+                <h3>✏️ Mi Perfil de Coleccionista</h3>
+                <div class="profile-form">
+                    <label>📍 Ciudad</label>
+                    <input type="text" id="userCity" placeholder="Ej: Popayán" value="${userProfile.city || ''}">
+                    
+                    <label>🗺️ Departamento</label>
+                    <input type="text" id="userDepartment" placeholder="Ej: Cauca" value="${userProfile.department || ''}">
+                    
+                    <label>📱 WhatsApp (visible para intercambios)</label>
+                    <input type="text" id="userWhatsapp" placeholder="Ej: +57 300 123 4567" value="${userProfile.whatsapp || ''}">
+                    
+                    <button id="saveProfileBtn">💾 Guardar Perfil</button>
+                </div>
+                <p style="font-size:0.75rem; color:#666; margin-top:16px; text-align:center;">
+                    <i class="fas fa-shield-alt"></i> Tu número solo será visible para otros usuarios cuando haya coincidencias de intercambio
+                </p>
+            </div>
+        `;
+        
+        document.getElementById('saveProfileBtn')?.addEventListener('click', saveUserProfile);
+    }
+
+    // ============================================================
     // INTERCAMBIO
     // ============================================================
     function generateTradeText() {
@@ -744,7 +917,13 @@
                 }
             }
         }
-        return `⚽ *PANINI FIFA WORLD CUP 2026* ⚽\n\n` +
+        
+        let locationText = "";
+        if (userProfile.city || userProfile.department) {
+            locationText = `\n📍 Ubicación: ${userProfile.department ? userProfile.department + ', ' : ''}${userProfile.city || ''}\n`;
+        }
+        
+        return `⚽ *PANINI FIFA WORLD CUP 2026* ⚽${locationText}\n` +
                `❌ *ME FALTAN (${missing.length}):*\n${missing.join(', ') || '¡Álbum completo! 🏆'}\n\n` +
                `🔄 *TENGO REPETIDAS (${repeated.length}):*\n${repeated.join(', ') || 'Ninguna repetida por ahora'}`;
     }
@@ -759,7 +938,7 @@
         const textarea = document.getElementById('tradeText');
         textarea.select();
         navigator.clipboard.writeText(textarea.value).then(() => {
-            alert('📋 Lista copiada al portapapeles. ¡Pégala en WhatsApp!');
+            showToast("📋 Lista copiada al portapapeles");
         }).catch(() => alert('No se pudo copiar, hazlo manualmente.'));
     }
 
@@ -768,7 +947,7 @@
     // ============================================================
     async function showCommunity() {
         if (!currentUser) {
-            alert('⚠️ Inicia sesión para ver la comunidad');
+            showToast('⚠️ Inicia sesión para ver la comunidad', true);
             return;
         }
         
@@ -776,10 +955,14 @@
         container.innerHTML = '<div class="community-container"><h3>👥 Coleccionistas activos</h3><div id="usersList">Cargando...</div></div>';
         
         try {
+            await loadUserProfile();
+            
             const myProfileRef = doc(db, `publicProfiles/${currentUser.uid}`);
             await setDoc(myProfileRef, {
                 alias: currentUser.displayName || "Coleccionista",
-                city: localStorage.getItem('user_city') || "No especificada",
+                city: userProfile.city || "No especificada",
+                department: userProfile.department || "",
+                whatsapp: userProfile.whatsapp || "",
                 visible: true,
                 lastActive: serverTimestamp()
             }, { merge: true });
@@ -794,10 +977,15 @@
                 if (doc.id !== currentUser.uid) {
                     const data = doc.data();
                     if (data.visible) {
+                        const location = [];
+                        if (data.department) location.push(data.department);
+                        if (data.city) location.push(data.city);
+                        const locationText = location.length ? `📍 ${location.join(', ')}` : '📍 Ubicación no especificada';
+                        
                         usersList.innerHTML += `
                             <div class="user-card" data-uid="${doc.id}">
                                 <div class="user-name">${data.alias || 'Anónimo'}</div>
-                                <div class="user-city">📍 ${data.city || 'Ciudad no especificada'}</div>
+                                <div class="user-city">${locationText}</div>
                                 <div class="user-stats">
                                     <span>🔄 Ver coincidencias</span>
                                 </div>
@@ -831,7 +1019,13 @@
         
         try {
             const otherProfile = await getDoc(doc(db, `publicProfiles/${otherUserId}`));
-            const otherName = otherProfile.data()?.alias || 'Coleccionista';
+            const otherData = otherProfile.data();
+            const otherName = otherData?.alias || 'Coleccionista';
+            
+            const otherLocation = [];
+            if (otherData?.department) otherLocation.push(otherData.department);
+            if (otherData?.city) otherLocation.push(otherData.city);
+            const otherLocationText = otherLocation.length ? `📍 ${otherLocation.join(', ')}` : '📍 Ubicación no especificada';
             
             let myMissing = [];
             let myRepeated = [];
@@ -860,12 +1054,43 @@
             const theyHaveIneed = otherRepeated.filter(id => myMissing.includes(id));
             const iHaveTheyNeed = myRepeated.filter(id => otherMissing.includes(id));
             
+            let contactHtml = '';
+            if ((theyHaveIneed.length > 0 || iHaveTheyNeed.length > 0) && otherData?.whatsapp) {
+                contactHtml = `
+                    <div style="background:#e8f5e9; border-radius:16px; padding:16px; margin-top:16px; text-align:center;">
+                        <strong>🎉 Posible intercambio!</strong><br>
+                        <div style="margin-top:12px;">
+                            <a href="https://wa.me/${otherData.whatsapp.replace(/[^0-9]/g, '')}" target="_blank" 
+                               style="background:#25d366; color:white; text-decoration:none; padding:10px 20px; border-radius:40px; display:inline-flex; align-items:center; gap:8px;">
+                                <i class="fab fa-whatsapp"></i> Contactar por WhatsApp
+                            </a>
+                        </div>
+                        <p style="font-size:0.7rem; margin-top:8px;">⚠️ Respeta la privacidad del otro coleccionista</p>
+                    </div>
+                `;
+            } else if ((theyHaveIneed.length > 0 || iHaveTheyNeed.length > 0) && !otherData?.whatsapp) {
+                contactHtml = `
+                    <div style="background:#fff3e0; border-radius:16px; padding:16px; margin-top:16px; text-align:center;">
+                        <strong>🎉 Posible intercambio!</strong><br>
+                        <p>Este usuario no ha compartido su contacto aún.</p>
+                        <p style="font-size:0.8rem;">Completa tu perfil para que otros te contacten.</p>
+                    </div>
+                `;
+            } else {
+                contactHtml = `
+                    <div style="background:#fff3e0; border-radius:16px; padding:16px; margin-top:16px;">
+                        😕 No hay coincidencias aún. Sigue coleccionando!
+                    </div>
+                `;
+            }
+            
             container.innerHTML = `
                 <div class="community-container">
-                    <button onclick="showCommunity()" style="background:#8a1538; color:white; border:none; padding:8px 16px; border-radius:40px; margin-bottom:16px;">
+                    <button onclick="window.showCommunityExternal()" style="background:#8a1538; color:white; border:none; padding:8px 16px; border-radius:40px; margin-bottom:16px;">
                         ← Volver a comunidad
                     </button>
                     <h3>🤝 Coincidencias con ${otherName}</h3>
+                    <p style="color:#666; margin-bottom:16px;">${otherLocationText}</p>
                     
                     <div class="matching-panel">
                         <h4>📦 Ellos tienen repetidas y TÚ necesitas (${theyHaveIneed.length})</h4>
@@ -877,19 +1102,11 @@
                         ${iHaveTheyNeed.map(id => `<div class="match-item">🔄 ${id}</div>`).join('') || '<p>No hay coincidencias en esta dirección</p>'}
                     </div>
                     
-                    ${(theyHaveIneed.length > 0 || iHaveTheyNeed.length > 0) ? 
-                        `<div style="background:#e8f5e9; border-radius:16px; padding:16px; margin-top:16px; text-align:center;">
-                            <strong>🎉 Posible intercambio!</strong><br>
-                            Contacta al usuario para coordinar.
-                        </div>` : 
-                        `<div style="background:#fff3e0; border-radius:16px; padding:16px; margin-top:16px;">
-                            😕 No hay coincidencias aún. Sigue coleccionando!
-                        </div>`
-                    }
+                    ${contactHtml}
                 </div>
             `;
             
-            window.showCommunity = showCommunity;
+            window.showCommunityExternal = showCommunity;
             
         } catch(e) {
             console.error('Error calculando coincidencias:', e);
@@ -909,6 +1126,7 @@
                 if (currentUser && currentUser.uid) {
                     syncAllToFirebase();
                 }
+                showToast("🗑️ Progreso reiniciado");
             });
         }
     }
@@ -927,6 +1145,9 @@
                 } else if (tab === 'community') {
                     modal.style.display = 'none';
                     showCommunity();
+                } else if (tab === 'profile') {
+                    modal.style.display = 'none';
+                    showProfileEditor();
                 }
             });
         });
@@ -942,17 +1163,18 @@
     async function handleLogin() {
         try {
             const result = await signInWithPopup(auth, provider);
-            console.log("Usuario logueado:", result.user.displayName);
+            showToast(`✅ Bienvenido ${result.user.displayName}`);
+            await loadUserProfile();
         } catch(error) {
             console.error("Error en login:", error);
-            alert("Error al iniciar sesión: " + error.message);
+            showToast("❌ Error al iniciar sesión: " + error.message, true);
         }
     }
 
     async function handleLogout() {
         try {
             await signOut(auth);
-            console.log("Sesión cerrada");
+            showToast("👋 Sesión cerrada");
         } catch(error) {
             console.error("Error en logout:", error);
         }
@@ -984,6 +1206,7 @@
             currentUser = user;
             updateAuthUI(user);
             await loadUserData();
+            if (user) await loadUserProfile();
             updateStats();
             renderAlbum();
         });
@@ -997,6 +1220,7 @@
     }
 
     window.addEventListener('DOMContentLoaded', initApp);
+    window.showCommunityExternal = showCommunity;
 </script>
 <script>
     if ('serviceWorker' in navigator) {
