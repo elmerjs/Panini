@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mis Láminas FIFA 2026</title>
+    <meta name="theme-color" content="#8a1538">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-weight/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --primary: #8a1538; /* Color Guinda FIFA */
+            --secondary: #ebfffc;
+            --gray-have: #a6a6a6; /* Gris RG 166,166,166 de tu Excel */
+            --bg-missing: #ffffff;
+            --bg-repeated: #ffda79;
+            --dark: #2c3e50;
+            --light: #f8f9fa;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+
+        body { background: var(--light); color: var(--dark); padding-bottom: 70px; }
+
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 15px;
+            text-align: center;
+            sticky: top;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .stats-bar {
+            display: flex;
+            justify-content: space-around;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 0.9rem;
+        }
+
+        .filters {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background: #fff;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .filters button, select {
+            padding: 8px 12px;
+            border-radius: 20px;
+            border: 1px solid #ccc;
+            background: #fff;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .filters button.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .album-container { padding: 10px; }
+
+        .team-section {
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .team-title {
+            font-size: 1.2rem;
+            color: var(--primary);
+            margin-bottom: 10px;
+            border-bottom: 2px solid var(--primary);
+            padding-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .stickers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
+            gap: 8px;
+        }
+
+        .sticker {
+            height: 65px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.85rem;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        /* Estados de las láminas */
+        .sticker.missing {
+            background: var(--bg-missing);
+            color: var(--dark);
+            border-color: #ccc;
+        }
+
+        .sticker.have {
+            background: var(--gray-have);
+            color: white;
+            border-color: #7f8c8d;
+        }
+
+        .sticker.repeated {
+            background: var(--bg-repeated);
+            color: #d35400;
+            border-color: #f39c12;
+        }
+
+        .sticker .badge {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            font-size: 0.7rem;
+            background: red;
+            color: white;
+            padding: 1px 4px;
+            border-radius: 10px;
+        }
+
+        /* Menú de Intercambio / Compartir */
+        .share-box {
+            display: none;
+            position: fixed;
+            bottom: 60px; left: 5%; right: 5%;
+            background: white;
+            padding: 20px;
+            border-radius: 15px 15px 0 0;
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.2);
+            z-index: 200;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .share-box textarea {
+            width: 100%; height: 100px; margin-top: 10px; padding: 10px;
+            border-radius: 8px; border: 1px solid #ccc; resize: none;
+        }
+
+        /* Navbar inferior */
+        .nav-bottom {
+            position: fixed; bottom: 0; left: 0; right: 0; height: 60px;
+            background: white; border-top: 1px solid #ddd;
+            display: flex; justify-content: space-around; align-items: center;
+            z-index: 150;
+        }
+
+        .nav-item {
+            display: flex; flex-direction: column; align-items: center;
+            font-size: 0.75rem; color: #7f8c8d; cursor: pointer;
+        }
+
+        .nav-item.active { color: var(--primary); }
+        .nav-item i { font-size: 1.4rem; margin-bottom: 2px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h2>Panini FIFA 2026 ⚽</h2>
+        <div class="stats-bar">
+            <div>Tengo: <span id="stat-have">0</span></div>
+            <div>Faltan: <span id="stat-missing">0</span></div>
+            <div>Repetidas: <span id="stat-repeated">0</span></div>
+        </div>
+    </header>
+
+    <div class="filters">
+        <select id="team-filter" onchange="renderAlbum()">
+            <option value="ALL">Todos los Equipos</option>
+        </select>
+        <div>
+            <button id="btn-all" class="active" onclick="filterStatus('ALL')">Todas</button>
+            <button id="btn-missing" onclick="filterStatus('MISSING')">Faltan</button>
+            <button id="btn-rep" onclick="filterStatus('REPEATED')">Repetidas</button>
+        </div>
+    </div>
+
+    <main class="album-container" id="album-grid"></main>
+
+    <div class="share-box" id="share-modal">
+        <h3><i class="fa-solid fa-right-left"></i> Modo Intercambio</h3>
+        <p style="font-size: 0.85rem; margin-top: 5px; color:#666;">Copia este texto para mandarlo por WhatsApp a tus amigos:</p>
+        <textarea id="share-text" readonly></textarea>
+        <button onclick="copyShareText()" style="width:100%; padding:10px; background:var(--primary); color:white; border:none; border-radius:8px; margin-top:10px; font-weight:bold;">
+            <i class="fa-regular fa-copy"></i> Copiar Lista
+        </button>
+    </div>
+
+    <nav class="nav-bottom">
+        <div class="nav-item active" id="nav-album" onclick="switchTab('album')">
+            <i class="fa-solid fa-book-open"></i>Mi Álbum
+        </div>
+        <div class="nav-item" id="nav-trade" onclick="switchTab('trade')">
+            <i class="fa-solid fa-right-left"></i>Intercambiar
+        </div>
+        <div class="nav-item" onclick="resetAlbum()">
+            <i class="fa-solid fa-trash-can"></i>Reiniciar
+        </div>
+    </nav>
+
+    <script>
+        // Basado en las selecciones detectadas en tu archivo PDF original
+        const TEAMS = [
+            "Especiales (00)", "MEX", "KOR", "CZE", "CAN", "QAT", "BRA", "MAR", "HAI", "SCO", 
+            "USA", "PAN", "AUS", "TUR", "CUW", "CIV", "NED", "JAP", "SWE", "TUN", 
+            "BEL", "EGY", "NZL", "ESP", "CPV", "KSA", "FRA", "SEN", "ROM", "NOR", "ARG", "ALG"
+        ];
+        
+        const STICKERS_PER_TEAM = 20; 
+
+        // Estructura de base de datos en memoria
+        // 0 = Falta (Missing), 1 = La tengo (Have), 2+ = Repetidas (Repeated)
+        let albumData = {};
+        let currentFilter = 'ALL'; // ALL, MISSING, REPEATED
+
+        // Inicializar o cargar datos de LocalStorage
+        function initData() {
+            const saved = localStorage.getItem('panini_2026_data');
+            if (saved) {
+                albumData = JSON.parse(saved);
+            } else {
+                TEAMS.forEach(team => {
+                    albumData[team] = {};
+                    let limit = team.includes("00") ? 2 : STICKERS_PER_TEAM; // Caso especial '00'
+                    for (let i = 1; i <= limit; i++) {
+                        albumData[team][i] = 0; 
+                    }
+                });
+                saveData();
+            }
+            populateTeamFilter();
+            calculateStats();
+            renderAlbum();
+        }
+
+        function saveData() {
+            localStorage.setItem('panini_2026_data', JSON.stringify(albumData));
+        }
+
+        function populateTeamFilter() {
+            const select = document.getElementById('team-filter');
+            TEAMS.forEach(team => {
+                let opt = document.createElement('option');
+                opt.value = team;
+                opt.innerText = team;
+                select.appendChild(opt);
+            });
+        }
+
+        function calculateStats() {
+            let have = 0, missing = 0, repeated = 0;
+            Object.keys(albumData).forEach(team => {
+                Object.keys(albumData[team]).forEach(num => {
+                    let status = albumData[team][num];
+                    if (status === 0) missing++;
+                    if (status >= 1) have++;
+                    if (status > 1) repeated += (status - 1);
+                });
+            });
+            document.getElementById('stat-have').innerText = have;
+            document.getElementById('stat-missing').innerText = missing;
+            document.getElementById('stat-repeated').innerText = repeated;
+        }
+
+        // Cambiar el estado con un toque (0 -> 1 -> 2 -> 0)
+        function toggleSticker(team, num) {
+            let current = albumData[team][num];
+            if (current === 0) current = 1;      // Conseguida (Gris)
+            else if (current === 1) current = 2; // Repetida (+1)
+            else if (current >= 2) current = 0;  // Volver a faltante
+            
+            albumData[team][num] = current;
+            saveData();
+            calculateStats();
+            
+            // Actualizar solo el elemento visualmente por rendimiento
+            const el = document.getElementById(`st-${team}-${num}`);
+            el.className = `sticker ${current === 0 ? 'missing' : current === 1 ? 'have' : 'repeated'}`;
+            let badge = el.querySelector('.badge');
+            if (current > 1) {
+                if(!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'badge';
+                    el.appendChild(badge);
+                }
+                badge.innerText = `+${current - 1}`;
+            } else if (badge) {
+                badge.remove();
+            }
+        }
+
+        function renderAlbum() {
+            const container = document.getElementById('album-grid');
+            container.innerHTML = '';
+            const selectedTeam = document.getElementById('team-filter').value;
+
+            Object.keys(albumData).forEach(team => {
+                if (selectedTeam !== 'ALL' && selectedTeam !== team) return;
+
+                // Crear sección de equipo
+                let section = document.createElement('div');
+                section.className = 'team-section';
+                
+                let title = document.createElement('div');
+                title.className = 'team-title';
+                title.innerHTML = `<span>${team}</span>`;
+                section.appendChild(title);
+
+                let grid = document.createElement('div');
+                grid.className = 'stickers-grid';
+
+                let hasStickersToShow = false;
+
+                Object.keys(albumData[team]).forEach(num => {
+                    let status = albumData[team][num];
+                    
+                    // Aplicar filtros de estado
+                    if (currentFilter === 'MISSING' && status !== 0) return;
+                    if (currentFilter === 'REPEATED' && status < 2) return;
+
+                    hasStickersToShow = true;
+
+                    let stClass = 'missing';
+                    if (status === 1) stClass = 'have';
+                    if (status > 1) stClass = 'repeated';
+
+                    let label = team.includes("00") ? `00` : `${team}${num}`;
+
+                    let stickerEl = document.createElement('div');
+                    stickerEl.id = `st-${team}-${num}`;
+                    stickerEl.className = `sticker ${stClass}`;
+                    stickerEl.innerHTML = `<div>${label}</div>`;
+                    
+                    if (status > 1) {
+                        stickerEl.innerHTML += `<span class="badge">+${status - 1}</span>`;
+                    }
+
+                    stickerEl.onclick = () => toggleSticker(team, num);
+                    grid.appendChild(stickerEl);
+                });
+
+                section.appendChild(grid);
+                if (hasStickersToShow) {
+                    container.appendChild(section);
+                }
+            });
+        }
+
+        function filterStatus(status) {
+            currentFilter = status;
+            document.getElementById('btn-all').className = status === 'ALL' ? 'active' : '';
+            document.getElementById('btn-missing').className = status === 'MISSING' ? 'active' : '';
+            document.getElementById('btn-rep').className = status === 'REPEATED' ? 'active' : '';
+            renderAlbum();
+        }
+
+        // Generar lista de intercambio para Whatsapp
+        function generateTradeText() {
+            let missingList = [];
+            let repeatedList = [];
+
+            Object.keys(albumData).forEach(team => {
+                Object.keys(albumData[team]).forEach(num => {
+                    let status = albumData[team][num];
+                    let label = team.includes("00") ? `00` : `${team}${num}`;
+                    if (status === 0) missingList.push(label);
+                    if (status > 1) {
+                        for(let i=1; i<status; i++) repeatedList.push(label);
+                    }
+                });
+            });
+
+            return `⚽ *MIS LÁMINAS FIFA 2026* ⚽\n\n` +
+                   `❌ *ME FALTAN:* \n${missingList.join(', ') || '¡Ninguna! Album completo'}\n\n` +
+                   `🔄 *REPETIDAS PARA CAMBIO:* \n${repeatedList.join(', ') || 'No tengo repetidas aún'}`;
+        }
+
+        function switchTab(tab) {
+            const modal = document.getElementById('share-modal');
+            document.getElementById('nav-album').className = 'nav-item' + (tab === 'album' ? ' active' : '');
+            document.getElementById('nav-trade').className = 'nav-item' + (tab === 'trade' ? ' active' : '');
+            
+            if (tab === 'trade') {
+                document.getElementById('share-text').value = generateTradeText();
+                modal.style.display = 'block';
+            } else {
+                modal.style.display = 'none';
+            }
+        }
+
+        function copyShareText() {
+            const textarea = document.getElementById('share-text');
+            textarea.select();
+            document.execCommand('copy');
+            alert('¡Texto de intercambio copiado! Ya puedes pegarlo en WhatsApp.');
+        }
+
+        function resetAlbum() {
+            if(confirm('¿Seguro que quieres borrar todos tus datos cargados? Esta acción no se puede deshacer.')) {
+                localStorage.removeItem('panini_2026_data');
+                initData();
+            }
+        }
+
+        // Service Worker en línea para simular comportamiento PWA sin archivos extra
+        if ('serviceWorker' in navigator) {
+            const swHtml = `
+                const cacheName = 'panini-2026-v1';
+                self.addEventListener('install', e => e.waitUntil(caches.open(cacheName).then(c => c.add('/'))));
+                self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))));
+            `;
+            const blob = new Blob([swHtml], {type: 'application/javascript'});
+            navigator.serviceWorker.register(URL.createObjectURL(blob));
+        }
+
+        // Iniciar la App
+        window.onload = initData;
+    </script>
+</body>
+</html>
