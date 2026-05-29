@@ -797,74 +797,66 @@
         return true;
     }
 
-    async function loadUserData() {
-        const fresh = initUserData();
-        
-        // PRIMERO: Intentar cargar desde Firebase (fuente de verdad)
-        if (currentUser && currentUser.uid) {
-            try {
-                console.log("Cargando desde Firebase...");
-                const albumRef = collection(window.db, `users/${currentUser.uid}/albumStatus`);
-                const snapshot = await getDocs(albumRef);
-                
-                if (!snapshot.empty) {
-                    console.log(`Encontrados ${snapshot.size} stickers en Firebase`);
-                    snapshot.forEach(doc => {
-                        const data = doc.data();
-                        const stickerId = data.stickerId;
-                        // Buscar en qué sección está este sticker
-                        for (let section in fresh) {
-                            if (fresh[section][stickerId]) {
-                                fresh[section][stickerId].status = data.status;
-                                fresh[section][stickerId].count = data.count;
-                                break;
-                            }
-                        }
-                    });
-                    userAlbumData = fresh;
-                    saveUserData(); // Guardar copia en localStorage
-                    console.log("Datos cargados desde Firebase y guardados localmente");
-                    return;
-                } else {
-                    console.log("No hay datos en Firebase para este usuario");
-                }
-            } catch(e) {
-                console.error("Error cargando desde Firebase:", e);
+async function loadUserData() {
+  const fresh = initUserData();
+
+  // 1. Cargar SIEMPRE local primero
+  const saved = localStorage.getItem("paniniuserdata");
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      for (let section in fresh) {
+        if (!parsed[section]) parsed[section] = fresh[section];
+        else {
+          for (let stickerId in fresh[section]) {
+            if (!parsed[section][stickerId]) {
+              parsed[section][stickerId] = fresh[section][stickerId];
             }
+          }
         }
-        
-        // SEGUNDO: Si no hay Firebase o error, cargar desde localStorage
-        const saved = localStorage.getItem('panini_user_data');
-        if (saved) {
-            try {
-                console.log("Cargando desde localStorage");
-                const parsed = JSON.parse(saved);
-                // Fusionar con fresh para asegurar que todos los stickers existen
-                for (let section in fresh) {
-                    if (!parsed[section]) {
-                        parsed[section] = fresh[section];
-                    } else {
-                        for (let stickerId in fresh[section]) {
-                            if (!parsed[section][stickerId]) {
-                                parsed[section][stickerId] = fresh[section][stickerId];
-                            }
-                        }
-                    }
-                }
-                userAlbumData = parsed;
-                saveUserData();
-                console.log("Datos cargados desde localStorage");
-            } catch(e) {
-                console.error("Error parsing localStorage:", e);
-                userAlbumData = fresh;
-                saveUserData();
-            }
-        } else {
-            console.log("No hay datos guardados, usando datos frescos");
-            userAlbumData = fresh;
-            saveUserData();
-        }
+      }
+      userAlbumData = parsed;
+    } catch (e) {
+      console.error("Error parsing localStorage:", e);
+      userAlbumData = fresh;
     }
+  } else {
+    userAlbumData = fresh;
+  }
+
+  saveUserData();
+  updateStats();
+  renderAlbum();
+
+  // 2. Luego intentar nube SIN pisar brutalmente lo local
+  if (currentUser && currentUser.uid) {
+    try {
+      const albumRef = collection(window.db, `users/${currentUser.uid}/albumStatus`);
+      const snapshot = await getDocs(albumRef);
+
+      if (!snapshot.empty) {
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data();
+          const stickerId = data.stickerId;
+
+          for (let section in userAlbumData) {
+            if (userAlbumData[section][stickerId]) {
+              userAlbumData[section][stickerId].status = data.status ?? userAlbumData[section][stickerId].status;
+              userAlbumData[section][stickerId].count = data.count ?? userAlbumData[section][stickerId].count;
+              break;
+            }
+          }
+        });
+
+        saveUserData();
+        updateStats();
+        renderAlbum();
+      }
+    } catch (e) {
+      console.error("Error cargando Firebase:", e);
+    }
+  }
+}
 
     async function loadUserProfile() {
         if (!currentUser) return;
