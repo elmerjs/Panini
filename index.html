@@ -347,7 +347,7 @@
     // --------------------------------------------------------------
     // 1. ESTRUCTURA DE DATOS DEL USUARIO (se guarda en localStorage)
     // --------------------------------------------------------------
-    let userAlbumData = {};  // { "MEX": { "MEX1": { status, count }, ... } }
+    let userAlbumData = {};
 
     // Inicializar a partir de defaultAlbumData (variable global definida en el archivo externo)
     function initUserData() {
@@ -357,13 +357,13 @@
         }
         const newData = {};
         for (const section of window.defaultAlbumData) {
-            const sectionId = section.id;      // ej: "FIFA", "MEX", "ARG"
+            const sectionId = section.id;
             newData[sectionId] = {};
             for (const sticker of section.stickers) {
                 newData[sectionId][sticker.id] = {
                     name: sticker.name,
                     type: sticker.type,
-                    status: 0,      // 0 = falta, 1 = tengo, 2 = repetida
+                    status: 0,
                     count: 0
                 };
             }
@@ -377,7 +377,6 @@
         if (saved) {
             try {
                 userAlbumData = JSON.parse(saved);
-                // Validación simple: si falta alguna sección, se completa con init
                 const fresh = initUserData();
                 for (let section in fresh) {
                     if (!userAlbumData[section]) userAlbumData[section] = fresh[section];
@@ -415,7 +414,7 @@
                 if (st.status === 1) have++;
                 else if (st.status === 0) missing++;
                 else if (st.status >= 2) {
-                    have++;   // la primera copia la tienes
+                    have++;
                     repeated += (st.status - 1);
                 }
             }
@@ -425,14 +424,12 @@
         document.getElementById('repeatCount').innerText = repeated;
     }
 
-    // Cambiar estado: 0 -> 1 -> 2 -> 0 ...
     function cycleStatus(sectionId, stickerId) {
         const sticker = userAlbumData[sectionId][stickerId];
         if (!sticker) return;
         if (sticker.status === 0) sticker.status = 1;
         else if (sticker.status === 1) sticker.status = 2;
         else sticker.status = 0;
-        // Normalizamos count (para repetidas no usamos count extra, usamos status >1)
         if (sticker.status <= 1) sticker.count = 0;
         else sticker.count = sticker.status - 1;
         saveUserData();
@@ -448,7 +445,6 @@
 
         for (const section of sections) {
             const sectionId = section.id;
-            // Filtro por equipo
             if (currentTeamFilter !== "ALL" && currentTeamFilter !== sectionId) continue;
 
             let hasAnySticker = false;
@@ -460,7 +456,6 @@
                 if (!userSticker) continue;
 
                 const status = userSticker.status;
-                // Filtro por estado
                 if (currentStatusFilter === "MISSING" && status !== 0) continue;
                 if (currentStatusFilter === "REPEATED" && status < 2) continue;
 
@@ -484,7 +479,6 @@
             if (hasAnySticker) container.innerHTML += gridHtml;
         }
 
-        // Añadir event listeners a los stickers después de renderizar
         document.querySelectorAll('.sticker').forEach(el => {
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -495,7 +489,6 @@
         });
     }
 
-    // Poblar el select de equipos
     function populateTeamSelect() {
         const select = document.getElementById('teamFilter');
         select.innerHTML = '<option value="ALL">🌍 Todos los equipos</option>';
@@ -514,7 +507,6 @@
         });
     }
 
-    // Configurar filtros de estado
     function setupStatusFilters() {
         const btns = document.querySelectorAll('.status-btn');
         btns.forEach(btn => {
@@ -529,12 +521,10 @@
     }
 
     // --------------------------------------------------------------
-    // 3. INTERCAMBIO (generar texto)
+    // 3. INTERCAMBIO
     // --------------------------------------------------------------
     function generateTradeText() {
-        let missing = [];
-        let repeated = [];
-
+        let missing = [], repeated = [];
         for (const section in userAlbumData) {
             for (const stickerId in userAlbumData[section]) {
                 const st = userAlbumData[section][stickerId];
@@ -545,7 +535,6 @@
                 }
             }
         }
-
         return `⚽ *PANINI FIFA WORLD CUP 2026* ⚽\n\n` +
                `❌ *ME FALTAN (${missing.length}):*\n${missing.join(', ') || '¡Álbum completo! 🏆'}\n\n` +
                `🔄 *TENGO REPETIDAS (${repeated.length}):*\n${repeated.join(', ') || 'Ninguna repetida por ahora'}`;
@@ -553,8 +542,7 @@
 
     function openTradeModal() {
         const modal = document.getElementById('tradeModal');
-        const textarea = document.getElementById('tradeText');
-        textarea.value = generateTradeText();
+        document.getElementById('tradeText').value = generateTradeText();
         modal.style.display = 'block';
     }
 
@@ -570,9 +558,9 @@
     // 4. RESET y NAVEGACIÓN
     // --------------------------------------------------------------
     function resetAllProgress() {
-        if (confirm('⚠️ ¿Estás seguro? Se perderán TODOS tus cromos marcados (tengas o repetidas). Esta acción no se puede deshacer.')) {
+        if (confirm('⚠️ ¿Estás seguro? Se perderán TODOS tus cromos marcados. Esta acción no se puede deshacer.')) {
             localStorage.removeItem('panini_user_data');
-            loadUserData();   // reinicia con datos nuevos
+            loadUserData();
             updateStats();
             renderAlbum();
         }
@@ -581,23 +569,14 @@
     function setupNavigation() {
         const navItems = document.querySelectorAll('.nav-item');
         const modal = document.getElementById('tradeModal');
-
         navItems.forEach(item => {
             item.addEventListener('click', () => {
                 const tab = item.dataset.tab;
-                if (tab === 'trade') {
-                    openTradeModal();
-                } else if (tab === 'album') {
-                    modal.style.display = 'none';
-                }
+                if (tab === 'trade') openTradeModal();
+                else if (tab === 'album') modal.style.display = 'none';
             });
         });
-
-        // Cerrar modal si se clica fuera
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.style.display = 'none';
-        });
-
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
         document.getElementById('copyTradeBtn').addEventListener('click', copyTradeText);
         document.getElementById('resetDataBtn').addEventListener('click', resetAllProgress);
     }
