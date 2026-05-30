@@ -574,9 +574,7 @@
         <button id="syncCloudBtn" class="sync-btn"><i class="fas fa-cloud-upload-alt"></i> Sincronizar</button>
     </div>
 </header>
-<button id="debugLocalBtn" class="sync-btn" style="background:#3b82f6; color:white; margin-left:8px;">
-    <i class="fas fa-database"></i> Debug
-</button>
+
 <div class="filters-bar">
     <select id="teamFilter" class="team-select"></select>
     <div class="status-buttons">
@@ -652,13 +650,12 @@
     let currentUser = null;
     let userProfile = { city: "", department: "", whatsapp: "" };
     
-    // OPTIMIZACIÓN: Variables para sincronización inteligente
-    let cambiosLocales = [];           // Cola de cambios pendientes
-    let syncTimeout = null;            // Timeout para auto-sync
-    let usuarioNuevo = false;          // Para saber si es primera vez
+    let cambiosLocales = [];
+    let syncTimeout = null;
+    let usuarioNuevo = false;
 
     // ============================================================
-    // FUNCIONES DE INICIALIZACIÓN DE DATOS
+    // FUNCIONES AUXILIARES
     // ============================================================
     function showToast(message, isError = false) {
         const existingToast = document.querySelector('.toast');
@@ -697,7 +694,6 @@
     function saveUserData() {
         try {
             localStorage.setItem('panini_user_data', JSON.stringify(userAlbumData));
-            console.log("Datos guardados en localStorage");
         } catch(e) {
             console.error("Error guardando en localStorage:", e);
         }
@@ -718,7 +714,6 @@
         }
     }
 
-    // AUTO-SINCRONIZACIÓN: Solo envía los cambios pendientes
     async function autoSync() {
         if (!currentUser || !currentUser.uid) return;
         if (cambiosLocales.length === 0) return;
@@ -748,7 +743,6 @@
         }
     }
 
-    // Sincronización manual optimizada (solo stickers con progreso)
     async function syncAllToFirebase(mostrarFeedback = true) {
         if (!currentUser || !currentUser.uid) {
             if (mostrarFeedback) showToast("⚠️ Inicia sesión primero", true);
@@ -762,7 +756,6 @@
             syncBtn.disabled = true;
         }
         
-        // SOLO subir stickers que tienen progreso (status > 0)
         const stickersConProgreso = [];
         for (const section in userAlbumData) {
             for (const stickerId in userAlbumData[section]) {
@@ -799,66 +792,73 @@
         return true;
     }
 
-async function loadUserData() {
-  const fresh = initUserData();
-
-  // 1. Cargar SIEMPRE local primero
-  const saved = localStorage.getItem("paniniuserdata");
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      for (let section in fresh) {
-        if (!parsed[section]) parsed[section] = fresh[section];
-        else {
-          for (let stickerId in fresh[section]) {
-            if (!parsed[section][stickerId]) {
-              parsed[section][stickerId] = fresh[section][stickerId];
+    async function loadUserData() {
+        const fresh = initUserData();
+        
+        // 1. Cargar desde localStorage (fuente local)
+        const saved = localStorage.getItem('panini_user_data');
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                for (let section in fresh) {
+                    if (!parsed[section]) parsed[section] = fresh[section];
+                    else {
+                        for (let stickerId in fresh[section]) {
+                            if (!parsed[section][stickerId]) {
+                                parsed[section][stickerId] = fresh[section][stickerId];
+                            }
+                        }
+                    }
+                }
+                userAlbumData = parsed;
+                saveUserData();
+            } catch(e) {
+                console.error("Error parsing localStorage:", e);
+                userAlbumData = fresh;
+                saveUserData();
             }
-          }
+        } else {
+            userAlbumData = fresh;
+            saveUserData();
         }
-      }
-      userAlbumData = parsed;
-    } catch (e) {
-      console.error("Error parsing localStorage:", e);
-      userAlbumData = fresh;
-    }
-  } else {
-    userAlbumData = fresh;
-  }
-
-  saveUserData();
-  updateStats();
-  renderAlbum();
-
-  // 2. Luego intentar nube SIN pisar brutalmente lo local
-  if (currentUser && currentUser.uid) {
-    try {
-      const albumRef = collection(window.db, `users/${currentUser.uid}/albumStatus`);
-      const snapshot = await getDocs(albumRef);
-
-      if (!snapshot.empty) {
-        snapshot.forEach(docSnap => {
-          const data = docSnap.data();
-          const stickerId = data.stickerId;
-
-          for (let section in userAlbumData) {
-            if (userAlbumData[section][stickerId]) {
-              userAlbumData[section][stickerId].status = data.status ?? userAlbumData[section][stickerId].status;
-              userAlbumData[section][stickerId].count = data.count ?? userAlbumData[section][stickerId].count;
-              break;
-            }
-          }
-        });
-
-        saveUserData();
+        
         updateStats();
         renderAlbum();
-      }
-    } catch (e) {
-      console.error("Error cargando Firebase:", e);
+        
+        // 2. Luego, si hay usuario, cargar desde Firebase y fusionar
+        if (currentUser && currentUser.uid) {
+            try {
+                const albumRef = collection(window.db, `users/${currentUser.uid}/albumStatus`);
+                const snapshot = await getDocs(albumRef);
+                
+                if (!snapshot.empty) {
+                    let cambios = false;
+                    snapshot.forEach(docSnap => {
+                        const data = docSnap.data();
+                        const stickerId = data.stickerId;
+                        for (let section in userAlbumData) {
+                            if (userAlbumData[section][stickerId]) {
+                                if (userAlbumData[section][stickerId].status !== data.status ||
+                                    userAlbumData[section][stickerId].count !== data.count) {
+                                    userAlbumData[section][stickerId].status = data.status;
+                                    userAlbumData[section][stickerId].count = data.count;
+                                    cambios = true;
+                                }
+                                break;
+                            }
+                        }
+                    });
+                    if (cambios) {
+                        saveUserData();
+                        updateStats();
+                        renderAlbum();
+                    }
+                }
+            } catch(e) {
+                console.error("Error cargando Firebase:", e);
+            }
+        }
     }
-  }
-}
 
     async function loadUserProfile() {
         if (!currentUser) return;
@@ -870,134 +870,6 @@ async function loadUserData() {
             }
         } catch(e) {
             console.warn("Error cargando perfil:", e);
-        }
-    }
-
-    async function checkShowWelcomeModal() {
-        if (!currentUser) return;
-        
-        const hasSeenWelcome = localStorage.getItem(`welcome_seen_${currentUser.uid}`);
-        const hasIncompleteProfile = !userProfile.city || !userProfile.whatsapp;
-        
-        if (hasIncompleteProfile && !hasSeenWelcome) {
-            showWelcomeModal();
-        } else if (hasIncompleteProfile && hasSeenWelcome === 'later') {
-            const laterCount = parseInt(localStorage.getItem(`welcome_later_${currentUser.uid}`) || '0');
-            if (laterCount >= 2) {
-                showWelcomeModal();
-                localStorage.setItem(`welcome_later_${currentUser.uid}`, '0');
-            } else {
-                localStorage.setItem(`welcome_later_${currentUser.uid}`, String(laterCount + 1));
-            }
-        }
-    }
-    
-    function showWelcomeModal() {
-        const existingModal = document.querySelector('.welcome-modal');
-        if (existingModal) existingModal.remove();
-        
-        const modal = document.createElement('div');
-        modal.className = 'welcome-modal';
-        modal.innerHTML = `
-            <div class="welcome-content">
-                <h2>🎉 ¡Bienvenido a la Comunidad!</h2>
-                <p>Para aprovechar los intercambios, otros coleccionistas necesitan saber:</p>
-                <div class="benefits">
-                    <ul>
-                        <li><i class="fas fa-map-marker-alt"></i> <strong>Tu ubicación</strong> (ciudad/departamento)</li>
-                        <li><i class="fab fa-whatsapp"></i> <strong>Tu contacto</strong> (para coordinar intercambios)</li>
-                    </ul>
-                </div>
-                <p style="font-size:0.85rem;">🔒 Tu información solo será visible cuando haya coincidencias de intercambio</p>
-                <div class="welcome-buttons">
-                    <button class="btn-secondary" id="welcomeLater">📝 Después</button>
-                    <button class="btn-primary" id="welcomeNow">✏️ Completar mi perfil</button>
-                </div>
-            </div>
-        `;
-        
-        document.body.appendChild(modal);
-        
-        document.getElementById('welcomeNow').addEventListener('click', () => {
-            localStorage.setItem(`welcome_seen_${currentUser.uid}`, 'completed');
-            modal.remove();
-            showProfileEditor();
-            showToast("✅ Completa tu perfil para empezar a intercambiar");
-        });
-        
-        document.getElementById('welcomeLater').addEventListener('click', () => {
-            localStorage.setItem(`welcome_seen_${currentUser.uid}`, 'later');
-            localStorage.setItem(`welcome_later_${currentUser.uid}`, '0');
-            modal.remove();
-            showToast("💡 Recuerda completar tu perfil en 'Mi Perfil' cuando puedas");
-        });
-    }
-    
-    function showProfileReminderBanner() {
-        const hasIncompleteProfile = (!userProfile.city || !userProfile.whatsapp);
-        const bannerDismissed = localStorage.getItem(`banner_dismissed_${currentUser?.uid}`);
-        
-        if (hasIncompleteProfile && currentUser && bannerDismissed !== 'true') {
-            const existingBanner = document.querySelector('.profile-banner');
-            if (existingBanner) return;
-            
-            const banner = document.createElement('div');
-            banner.className = 'profile-banner';
-            banner.style.cssText = `
-                background: #ff9800;
-                color: white;
-                padding: 10px 16px;
-                text-align: center;
-                font-size: 0.85rem;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                gap: 12px;
-                flex-wrap: wrap;
-                cursor: pointer;
-            `;
-            banner.innerHTML = `
-                <span style="flex:1;">⚠️ Completa tu perfil (ubicación y contacto) para que otros te encuentren</span>
-                <button id="dismissBanner" style="background:transparent; border:none; color:white; font-size:1.2rem; cursor:pointer;">✕</button>
-            `;
-            
-            const filtersBar = document.querySelector('.filters-bar');
-            filtersBar.parentNode.insertBefore(banner, filtersBar);
-            
-            banner.addEventListener('click', (e) => {
-                if (e.target.id !== 'dismissBanner') {
-                    showProfileEditor();
-                }
-            });
-            
-            document.getElementById('dismissBanner')?.addEventListener('click', (e) => {
-                e.stopPropagation();
-                banner.remove();
-                localStorage.setItem(`banner_dismissed_${currentUser.uid}`, 'true');
-            });
-        }
-    }
-
-    async function saveUserProfile() {
-        const city = document.getElementById('userCity')?.value || '';
-        const department = document.getElementById('userDepartment')?.value || '';
-        const whatsapp = document.getElementById('userWhatsapp')?.value || '';
-        
-        try {
-            const profileRef = doc(db, `publicProfiles/${currentUser.uid}`);
-            await setDoc(profileRef, {
-                alias: currentUser.displayName || "Coleccionista",
-                city: city,
-                department: department,
-                whatsapp: whatsapp,
-                visible: true,
-                lastActive: serverTimestamp()
-            }, { merge: true });
-            userProfile = { city, department, whatsapp };
-            showToast("✅ Perfil guardado correctamente");
-            showProfileEditor();
-        } catch(e) {
-            showToast("❌ Error guardando perfil", true);
         }
     }
 
@@ -1022,7 +894,6 @@ async function loadUserData() {
         document.getElementById('repeatCount').innerText = repeated;
     }
 
-    // CYCLE STATUS OPTIMIZADO: Guarda en cola, no envía inmediatamente
     function cycleStatus(sectionId, stickerId) {
         const sticker = userAlbumData[sectionId][stickerId];
         if (!sticker) return;
@@ -1036,7 +907,6 @@ async function loadUserData() {
         
         saveUserData();
         
-        // Guardar en cola de cambios pendientes
         cambiosLocales.push({
             sectionId: sectionId,
             stickerId: stickerId,
@@ -1044,7 +914,6 @@ async function loadUserData() {
             count: sticker.count
         });
         
-        // Programar sincronización automática (2 segundos después del último cambio)
         if (syncTimeout) clearTimeout(syncTimeout);
         syncTimeout = setTimeout(() => autoSync(), 2000);
         
@@ -1164,6 +1033,29 @@ async function loadUserData() {
         document.getElementById('saveProfileBtn')?.addEventListener('click', saveUserProfile);
     }
 
+    async function saveUserProfile() {
+        const city = document.getElementById('userCity')?.value || '';
+        const department = document.getElementById('userDepartment')?.value || '';
+        const whatsapp = document.getElementById('userWhatsapp')?.value || '';
+        
+        try {
+            const profileRef = doc(db, `publicProfiles/${currentUser.uid}`);
+            await setDoc(profileRef, {
+                alias: currentUser.displayName || "Coleccionista",
+                city: city,
+                department: department,
+                whatsapp: whatsapp,
+                visible: true,
+                lastActive: serverTimestamp()
+            }, { merge: true });
+            userProfile = { city, department, whatsapp };
+            showToast("✅ Perfil guardado correctamente");
+            showProfileEditor();
+        } catch(e) {
+            showToast("❌ Error guardando perfil", true);
+        }
+    }
+
     // ============================================================
     // INTERCAMBIO
     // ============================================================
@@ -1273,7 +1165,7 @@ async function loadUserData() {
         }
     }
 
-        async function showMatching(otherUserId) {
+    async function showMatching(otherUserId) {
         if (!currentUser) return;
         
         const container = document.getElementById('albumContainer');
@@ -1289,15 +1181,12 @@ async function loadUserData() {
             if (otherData?.city) otherLocation.push(otherData.city);
             const otherLocationText = otherLocation.length ? `📍 ${otherLocation.join(', ')}` : '📍 Ubicación no especificada';
             
-            // CORREGIDO: Usar el mismo formato para todos los IDs
             let myMissing = [];
             let myRepeated = [];
             
             for (const section in userAlbumData) {
                 for (const stickerId in userAlbumData[section]) {
                     const st = userAlbumData[section][stickerId];
-                    // Usar stickerId SOLO (sin prefijo de sección)
-                    // Porque en Firebase se guarda como `${section}_${stickerId}`
                     const firebaseId = `${section}_${stickerId}`;
                     if (st.status === 0) myMissing.push(firebaseId);
                     if (st.status >= 2) myRepeated.push(firebaseId);
@@ -1312,29 +1201,17 @@ async function loadUserData() {
             
             otherSnapshot.forEach(doc => {
                 const data = doc.data();
-                const stickerId = data.stickerId; // Esto ya viene como "MEX_MEX8"
+                const stickerId = data.stickerId;
                 if (data.status === 0) otherMissing.push(stickerId);
                 if (data.status >= 2) otherRepeated.push(stickerId);
             });
             
-            // DEBUG: Mostrar en consola para verificar
-            console.log("Mis repetidas:", myRepeated);
-            console.log("Faltantes del otro:", otherMissing);
-            console.log("Coincidencia (yo doy):", myRepeated.filter(id => otherMissing.includes(id)));
-            console.log("Repetidas del otro:", otherRepeated);
-            console.log("Mis faltantes:", myMissing);
-            console.log("Coincidencia (ellos dan):", otherRepeated.filter(id => myMissing.includes(id)));
-            
             const theyHaveIneed = otherRepeated.filter(id => myMissing.includes(id));
             const iHaveTheyNeed = myRepeated.filter(id => otherMissing.includes(id));
             
-            // Función para extraer nombre legible del sticker
             function getStickerDisplayName(fullId) {
-                // fullId viene como "MEX_MEX8" o "FIFA_FW14"
                 const parts = fullId.split('_');
-                const code = parts[parts.length - 1]; // Última parte es el código real
-                
-                // Buscar el nombre en userAlbumData
+                const code = parts[parts.length - 1];
                 for (const section in userAlbumData) {
                     if (userAlbumData[section][code]) {
                         return `${code} (${userAlbumData[section][code].name})`;
@@ -1403,7 +1280,7 @@ async function loadUserData() {
         }
     }
 
-    // Guardar cambios pendientes antes de cerrar la página
+    // Guardar cambios pendientes antes de cerrar
     window.addEventListener('beforeunload', async () => {
         if (cambiosLocales.length > 0 && currentUser) {
             await autoSync();
@@ -1495,6 +1372,113 @@ async function loadUserData() {
     }
 
     // ============================================================
+    // BIENVENIDA Y BANNER (sin cambios respecto a tu versión)
+    // ============================================================
+    async function checkShowWelcomeModal() {
+        if (!currentUser) return;
+        const hasSeenWelcome = localStorage.getItem(`welcome_seen_${currentUser.uid}`);
+        const hasIncompleteProfile = !userProfile.city || !userProfile.whatsapp;
+        
+        if (hasIncompleteProfile && !hasSeenWelcome) {
+            showWelcomeModal();
+        } else if (hasIncompleteProfile && hasSeenWelcome === 'later') {
+            const laterCount = parseInt(localStorage.getItem(`welcome_later_${currentUser.uid}`) || '0');
+            if (laterCount >= 2) {
+                showWelcomeModal();
+                localStorage.setItem(`welcome_later_${currentUser.uid}`, '0');
+            } else {
+                localStorage.setItem(`welcome_later_${currentUser.uid}`, String(laterCount + 1));
+            }
+        }
+    }
+    
+    function showWelcomeModal() {
+        const existingModal = document.querySelector('.welcome-modal');
+        if (existingModal) existingModal.remove();
+        
+        const modal = document.createElement('div');
+        modal.className = 'welcome-modal';
+        modal.innerHTML = `
+            <div class="welcome-content">
+                <h2>🎉 ¡Bienvenido a la Comunidad!</h2>
+                <p>Para aprovechar los intercambios, otros coleccionistas necesitan saber:</p>
+                <div class="benefits">
+                    <ul>
+                        <li><i class="fas fa-map-marker-alt"></i> <strong>Tu ubicación</strong> (ciudad/departamento)</li>
+                        <li><i class="fab fa-whatsapp"></i> <strong>Tu contacto</strong> (para coordinar intercambios)</li>
+                    </ul>
+                </div>
+                <p style="font-size:0.85rem;">🔒 Tu información solo será visible cuando haya coincidencias de intercambio</p>
+                <div class="welcome-buttons">
+                    <button class="btn-secondary" id="welcomeLater">📝 Después</button>
+                    <button class="btn-primary" id="welcomeNow">✏️ Completar mi perfil</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        document.getElementById('welcomeNow').addEventListener('click', () => {
+            localStorage.setItem(`welcome_seen_${currentUser.uid}`, 'completed');
+            modal.remove();
+            showProfileEditor();
+            showToast("✅ Completa tu perfil para empezar a intercambiar");
+        });
+        
+        document.getElementById('welcomeLater').addEventListener('click', () => {
+            localStorage.setItem(`welcome_seen_${currentUser.uid}`, 'later');
+            localStorage.setItem(`welcome_later_${currentUser.uid}`, '0');
+            modal.remove();
+            showToast("💡 Recuerda completar tu perfil en 'Mi Perfil' cuando puedas");
+        });
+    }
+    
+    function showProfileReminderBanner() {
+        const hasIncompleteProfile = (!userProfile.city || !userProfile.whatsapp);
+        const bannerDismissed = localStorage.getItem(`banner_dismissed_${currentUser?.uid}`);
+        
+        if (hasIncompleteProfile && currentUser && bannerDismissed !== 'true') {
+            const existingBanner = document.querySelector('.profile-banner');
+            if (existingBanner) return;
+            
+            const banner = document.createElement('div');
+            banner.className = 'profile-banner';
+            banner.style.cssText = `
+                background: #ff9800;
+                color: white;
+                padding: 10px 16px;
+                text-align: center;
+                font-size: 0.85rem;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                flex-wrap: wrap;
+                cursor: pointer;
+            `;
+            banner.innerHTML = `
+                <span style="flex:1;">⚠️ Completa tu perfil (ubicación y contacto) para que otros te encuentren</span>
+                <button id="dismissBanner" style="background:transparent; border:none; color:white; font-size:1.2rem; cursor:pointer;">✕</button>
+            `;
+            
+            const filtersBar = document.querySelector('.filters-bar');
+            filtersBar.parentNode.insertBefore(banner, filtersBar);
+            
+            banner.addEventListener('click', (e) => {
+                if (e.target.id !== 'dismissBanner') {
+                    showProfileEditor();
+                }
+            });
+            
+            document.getElementById('dismissBanner')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                banner.remove();
+                localStorage.setItem(`banner_dismissed_${currentUser.uid}`, 'true');
+            });
+        }
+    }
+
+    // ============================================================
     // INICIALIZACIÓN
     // ============================================================
     async function initApp() {
@@ -1507,7 +1491,6 @@ async function loadUserData() {
                 await checkShowWelcomeModal();
                 showProfileReminderBanner();
                 
-                // Si es usuario NUEVO, sincronizar automáticamente
                 if (usuarioNuevo) {
                     setTimeout(() => {
                         syncAllToFirebase(false);
@@ -1531,44 +1514,13 @@ async function loadUserData() {
     window.showCommunityExternal = showCommunity;
 </script>
 <script>
-    // Forzar actualización del Service Worker
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(registrations => {
-        for (let registration of registrations) {
-            registration.update();
-            console.log('Service Worker actualizado');
-        }
-    });
-}
-    function debugLocalStorage() {
-    const saved = localStorage.getItem('panini_user_data');
-    console.log("=== DIAGNÓSTICO localStorage ===");
-    console.log("¿Hay datos guardados?", saved ? "SÍ" : "NO");
-    
-    if (saved) {
-        const parsed = JSON.parse(saved);
-        let count = 0;
-        for (const section in parsed) {
-            for (const sticker in parsed[section]) {
-                if (parsed[section][sticker].status > 0) count++;
-            }
-        }
-        console.log("Stickers marcados en localStorage:", count);
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(() => console.log('Service Worker registrado'))
+                .catch(err => console.error('Error registrando SW:', err));
+        });
     }
-    
-    let memoryCount = 0;
-    for (const section in userAlbumData) {
-        for (const sticker in userAlbumData[section]) {
-            if (userAlbumData[section][sticker].status > 0) memoryCount++;
-        }
-    }
-    console.log("Stickers marcados en memoria:", memoryCount);
-    
-    alert(`localStorage: ${saved ? "Con datos" : "VACÍO"}\nMemoria: ${memoryCount} stickers`);
-}
-
-document.getElementById('debugLocalBtn')?.addEventListener('click', debugLocalStorage);
-    
 </script>
 </body>
 </html>
