@@ -1,8 +1,8 @@
 {
-  "name": "Álbum Panini 2026",
+  "name": "Panini FIFA 2026",
   "short_name": "Panini 2026",
   "description": "Gestión de álbum Panini FIFA World Cup 2026",
-  "start_url": "./",
+  "start_url": "./index-dev.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

@@ -1,7 +1,7 @@
-const CACHE_NAME = 'panini-2026-v1';
+const CACHE_NAME = 'panini-2026-v2';
 const APP_SHELL = [
   './',
-  './index.html',
+  './index-dev.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
