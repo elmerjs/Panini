@@ -589,7 +589,11 @@
 <div id="tradeModal" class="modal">
     <h3><i class="fas fa-handshake"></i> Mis intercambios</h3>
     <textarea id="tradeText" readonly></textarea>
-    <button id="copyTradeBtn"><i class="fas fa-copy"></i> Copiar lista para WhatsApp</button>
+    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px;">
+        <button id="copyFullBtn" style="background:#8a1538;"><i class="fas fa-copy"></i> Copiar lista completa (faltan + repetidas)</button>
+        <button id="copyRepeatedOnlyBtn" style="background:#25d366;"><i class="fas fa-copy"></i> Copiar solo MIS REPETIDAS</button>
+	<button id="copyMissingOnlyBtn" style="background:#f39c12;"><i class="fas fa-copy"></i> Copiar solo MIS FALTANTES</button>
+    </div>
 </div>
 
 <nav class="bottom-nav">
@@ -1059,7 +1063,7 @@
     // ============================================================
     // INTERCAMBIO
     // ============================================================
-    function generateTradeText() {
+    function generateTradeText(type = 'full') {
         let missing = [], repeated = [];
         for (const section in userAlbumData) {
             for (const stickerId in userAlbumData[section]) {
@@ -1077,21 +1081,29 @@
             locationText = `\n📍 Ubicación: ${userProfile.department ? userProfile.department + ', ' : ''}${userProfile.city || ''}\n`;
         }
         
-        return `⚽ *PANINI FIFA WORLD CUP 2026* ⚽${locationText}\n` +
-               `❌ *ME FALTAN (${missing.length}):*\n${missing.join(', ') || '¡Álbum completo! 🏆'}\n\n` +
-               `🔄 *TENGO REPETIDAS (${repeated.length}):*\n${repeated.join(', ') || 'Ninguna repetida por ahora'}`;
+        const base = `⚽ *PANINI FIFA WORLD CUP 2026* ⚽${locationText}\n`;
+        
+        if (type === 'missing') {
+            return base + `❌ *ME FALTAN (${missing.length}):*\n${missing.join(', ') || '¡Álbum completo! 🏆'}`;
+        } else if (type === 'repeated') {
+            return base + `🔄 *TENGO REPETIDAS (${repeated.length}):*\n${repeated.join(', ') || 'Ninguna repetida por ahora'}`;
+        } else { // full
+            return base +
+                   `❌ *ME FALTAN (${missing.length}):*\n${missing.join(', ') || '¡Álbum completo! 🏆'}\n\n` +
+                   `🔄 *TENGO REPETIDAS (${repeated.length}):*\n${repeated.join(', ') || 'Ninguna repetida por ahora'}`;
+        }
     }
 
     function openTradeModal() {
         const modal = document.getElementById('tradeModal');
-        document.getElementById('tradeText').value = generateTradeText();
+        // Por defecto muestra la lista completa
+        document.getElementById('tradeText').value = generateTradeText('full');
         modal.style.display = 'block';
     }
 
-    function copyTradeText() {
-        const textarea = document.getElementById('tradeText');
-        textarea.select();
-        navigator.clipboard.writeText(textarea.value).then(() => {
+    function copyTradeText(textType) {
+        const text = generateTradeText(textType);
+        navigator.clipboard.writeText(text).then(() => {
             showToast("📋 Lista copiada al portapapeles");
         }).catch(() => alert('No se pudo copiar, hazlo manualmente.'));
     }
@@ -1325,7 +1337,9 @@
             });
         });
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
-        document.getElementById('copyTradeBtn').addEventListener('click', copyTradeText);
+        document.getElementById('copyFullBtn').addEventListener('click', () => copyTradeText('full'));
+        document.getElementById('copyRepeatedOnlyBtn').addEventListener('click', () => copyTradeText('repeated'));
+	document.getElementById('copyMissingOnlyBtn')?.addEventListener('click', () => copyTradeText('missing'));
         document.getElementById('resetDataBtn').addEventListener('click', resetAllProgress);
         document.getElementById('syncCloudBtn').addEventListener('click', () => syncAllToFirebase(true));
     }
